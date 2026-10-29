@@ -1,0 +1,7 @@
+{
+  "name": "AgroVision AI - Crop Disease Detection System",
+  "description": "AI-powered crop disease detection and diagnosis system using camera leaf scanning, transfer learning neural classification, confidence estimation, and structured agricultural treatment advisory.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
