@@ -1,13 +1,20 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Camera, RefreshCw, Upload, Sparkles, AlertCircle, CheckCircle2, Zap, Sliders, Image as ImageIcon } from 'lucide-react';
 import { FIELD_SAMPLES, FieldSample } from '../data/plantVillageData';
+import { Language, TRANSLATIONS } from '../data/translations';
 
 interface CameraScannerProps {
   onCapture: (base64Image: string, sampleHint?: string) => void;
   isAnalyzing: boolean;
+  currentLanguage?: Language;
 }
 
-export const CameraScanner: React.FC<CameraScannerProps> = ({ onCapture, isAnalyzing }) => {
+export const CameraScanner: React.FC<CameraScannerProps> = ({
+  onCapture,
+  isAnalyzing,
+  currentLanguage = 'en',
+}) => {
+  const t = TRANSLATIONS[currentLanguage].camera;
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -165,8 +172,8 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onCapture, isAnaly
       <div className="flex items-center justify-between px-5 py-3.5 border-b border-stone-200 bg-stone-50/70">
         <div className="flex items-center gap-2.5">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
-          <h2 className="text-sm font-semibold text-stone-900 tracking-tight">Leaf Viewfinder & Sensor Feed</h2>
-          <span className="text-xs text-stone-600 font-mono">224×224 Model Frame</span>
+          <h2 className="text-sm font-semibold text-stone-900 tracking-tight">{t.title}</h2>
+          <span className="text-xs text-stone-600 font-mono">{t.frameSize}</span>
         </div>
         <div className="flex items-center gap-2">
           {cameraActive && (
@@ -232,9 +239,9 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onCapture, isAnaly
             <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-stone-900 border border-stone-800 flex items-center justify-center text-emerald-400">
               <Camera className="w-7 h-7" />
             </div>
-            <h3 className="text-base font-semibold text-stone-100 mb-1">Camera Standby</h3>
+            <h3 className="text-base font-semibold text-stone-100 mb-1">{t.standbyTitle}</h3>
             <p className="text-xs text-stone-400 mb-5 leading-relaxed">
-              Launch real-time camera inspection, upload a field photo, or select a pre-loaded crop leaf sample below.
+              {t.standbyDesc}
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2.5">
               <button
@@ -243,7 +250,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onCapture, isAnaly
                 className="px-4 py-2 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-600 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
               >
                 <Camera className="w-3.5 h-3.5" />
-                Enable Camera
+                {t.openCamera}
               </button>
               <button
                 type="button"
@@ -251,7 +258,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onCapture, isAnaly
                 className="px-4 py-2 text-xs font-medium text-stone-200 bg-stone-800 hover:bg-stone-700 border border-stone-700 rounded-lg transition-colors flex items-center gap-1.5"
               >
                 <Upload className="w-3.5 h-3.5" />
-                Upload Photo
+                {t.uploadPhoto}
               </button>
             </div>
           </div>
@@ -279,7 +286,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onCapture, isAnaly
             </div>
 
             <div className="mt-3 bg-stone-900/80 backdrop-blur-sm border border-stone-700/60 text-stone-200 text-xs px-3 py-1 rounded-full font-mono">
-              Align infected leaf within the reticle
+              {t.reticleGuide}
             </div>
           </div>
         )}
@@ -288,8 +295,8 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onCapture, isAnaly
         {isAnalyzing && (
           <div className="absolute inset-0 bg-stone-950/75 backdrop-blur-xs flex flex-col items-center justify-center text-white z-20">
             <div className="w-10 h-10 border-3 border-emerald-500/30 border-t-emerald-400 rounded-full animate-spin mb-3"></div>
-            <p className="text-sm font-semibold tracking-wide">MobileNetV2 Inference</p>
-            <p className="text-xs text-stone-400 mt-1 font-mono">Extracting feature maps & computing softmax probabilities...</p>
+            <p className="text-sm font-semibold tracking-wide">{t.analyzing}</p>
+            <p className="text-xs text-stone-400 mt-1 font-mono">{t.analyzingSub}</p>
           </div>
         )}
       </div>
@@ -316,14 +323,14 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onCapture, isAnaly
                 className="px-5 py-2.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-600 rounded-lg shadow-sm transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50"
               >
                 <Camera className="w-4 h-4" />
-                Capture & Diagnose
+                {t.captureBtn}
               </button>
               <button
                 type="button"
                 onClick={stopCamera}
                 className="px-3 py-2.5 text-xs font-medium text-stone-700 bg-white hover:bg-stone-100 border border-stone-300 rounded-lg transition-colors"
               >
-                Close Camera
+                {t.closeCamera}
               </button>
             </>
           ) : (
@@ -335,7 +342,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onCapture, isAnaly
                 className="px-4 py-2 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-600 rounded-lg shadow-sm transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
               >
                 <Camera className="w-3.5 h-3.5" />
-                Open Live Camera
+                {t.openCamera}
               </button>
               <button
                 type="button"
@@ -344,7 +351,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onCapture, isAnaly
                 className="px-3 py-2 text-xs font-medium text-stone-700 bg-white hover:bg-stone-100 border border-stone-300 rounded-lg transition-colors flex items-center gap-1.5"
               >
                 <Upload className="w-3.5 h-3.5" />
-                Choose File
+                {t.uploadPhoto}
               </button>
               <input
                 ref={fileInputRef}
@@ -360,7 +367,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onCapture, isAnaly
         {capturedPreview && (
           <div className="flex items-center gap-2 text-xs text-stone-500 font-mono">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Image Ready for Analysis</span>
+            <span>{t.readyNotice}</span>
           </div>
         )}
       </div>
@@ -370,9 +377,9 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onCapture, isAnaly
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-1.5 text-xs font-medium text-stone-700">
             <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
-            <span>Or Test Instant Benchmark Samples (PlantVillage Dataset)</span>
+            <span>{t.benchmarks}</span>
           </div>
-          <span className="text-[11px] text-stone-500">1-click test</span>
+          <span className="text-[11px] text-stone-500">{t.oneClick}</span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {FIELD_SAMPLES.map((sample) => {

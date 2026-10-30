@@ -11,7 +11,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+// AI Studio dev server runs on port 3000. In production Cloud Run uses process.env.PORT (8080).
+const PORT = process.env.NODE_ENV === 'production' ? (Number(process.env.PORT) || 8080) : 3000;
 
 // Body parser with 25mb limit for camera snapshot base64 payloads
 app.use(express.json({ limit: '25mb' }));
@@ -441,6 +442,232 @@ Include specific application timings, safety precautions (PPE, withholding perio
   }
 });
 
+// POST /api/text-to-speech - Generates high-fidelity WAV audio using Gemini 3.8 Flash-Lite TTS
+app.post('/api/text-to-speech', async (req: Request, res: Response) => {
+  try {
+    const { text, language = 'en', voiceName = 'Kore' } = req.body;
+
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({ error: 'Text is required for TTS' });
+    }
+
+    // Limit text length to prevent excessive latency
+    const trimmedText = text.slice(0, 800);
+
+    if (!ai || !process.env.GEMINI_API_KEY) {
+      return res.json({
+        audioBase64: null,
+        fallbackText: trimmedText,
+        note: 'TTS requires GEMINI_API_KEY; client browser speech synthesis will be used.'
+      });
+    }
+
+    const styleInstruction = language === 'hi'
+      ? "Clear, warm, respectful Indian agricultural advisor speaking fluent, natural Hindi"
+      : language === 'pa'
+      ? "Helpful agricultural advisor speaking clear Punjabi"
+      : language === 'es'
+      ? "Clear, empathetic agricultural extension officer speaking Spanish"
+      : "Clear, professional agricultural pathologist giving authoritative field advice";
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.8-flash-lite-tts",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: trimmedText,
+              speechMetadata: {
+                style: styleInstruction,
+              },
+            },
+          ],
+        },
+      ],
+      config: {
+        responseModalities: ["AUDIO"],
+        speechConfig: {
+          voiceConfig: {
+            // 'Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'
+            prebuiltVoiceConfig: { voiceName: voiceName || "Kore" },
+          },
+        },
+      },
+    });
+
+    const audioBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
+
+    return res.json({
+      audioBase64,
+      mimeType: "audio/wav",
+      text: trimmedText
+    });
+  } catch (error: any) {
+    console.error("Text-to-speech error:", error);
+    return res.json({
+      audioBase64: null,
+      error: error?.message || "TTS service unavailable",
+      fallbackText: req.body?.text || ""
+    });
+  }
+});
+
+// POST /api/voice-assistant - Multi-turn conversational voice assistant for farmers in Hindi & English
+app.post('/api/voice-assistant', async (req: Request, res: Response) => {
+  try {
+    const { question, diagnosisContext, language = 'hi', chatHistory = [] } = req.body;
+
+    if (!question) {
+      return res.status(400).json({ error: 'Question is required' });
+    }
+
+    const isHindi = language === 'hi';
+    const isPunjabi = language === 'pa';
+    const isSpanish = language === 'es';
+
+    let defaultFallbackReply = isHindi
+      ? `नमस्कार! आपकी फसल में ${diagnosisContext?.condition || 'रोग नियंत्रण'} के लिए सलाह: प्रभावित पत्तियों को तुरंत तोड़कर खेत से दूर नष्ट करें। धूप निकलने से पहले या शाम को ही फफूंदनाशक का छिड़काव करें (2.5 ग्राम प्रति लीटर पानी)। अधिक जानकारी के लिए स्थानीय कृषि विस्तार अधिकारी से संपर्क करें।`
+      : `Hello! For managing ${diagnosisContext?.condition || 'crop issues'} in your ${diagnosisContext?.crop || 'crop'}: Prune severely affected leaves, avoid overhead watering, and spray fungicide at 2.0 to 2.5 grams per liter in early morning or late dusk.`;
+
+    if (!ai || !process.env.GEMINI_API_KEY) {
+      return res.json({
+        reply: defaultFallbackReply,
+        audioBase64: null,
+        language
+      });
+    }
+
+    // System instruction tailored to conversational voice assistant
+    const systemInstruction = `You are "AgroVision Krishi Voice Mitra" (कृषि वॉयस मित्र), an expert agricultural and plant pathology voice assistant designed to help farmers in the field.
+The user speaks or communicates in ${isHindi ? 'Hindi (हिन्दी)' : isPunjabi ? 'Punjabi' : isSpanish ? 'Spanish' : 'English'}.
+Always reply directly in ${isHindi ? 'fluent, practical, easy-to-understand Hindi (देवनागरी लिपि)' : isPunjabi ? 'Punjabi' : isSpanish ? 'Spanish' : 'English'}.
+Active Diagnosed Plant context:
+- Crop: ${diagnosisContext?.crop || 'Crop'}
+- Condition: ${diagnosisContext?.condition || 'Undiagnosed / General'}
+- Pathogen: ${diagnosisContext?.scientificName || 'None'}
+- Severity: ${diagnosisContext?.severity || 'Not specified'}
+- Recommended Chemical: ${diagnosisContext?.chemicalTreatment || 'Consult label'}
+- Organic Treatment: ${diagnosisContext?.organicTreatment || 'Bio-fungicide'}
+
+Guidelines for voice response:
+1. Keep the spoken response concise (2-4 clear sentences, under 60-70 words) so it sounds natural when read out loud to a farmer working in the field.
+2. Provide exact measurements (e.g. 2-2.5 ग्राम प्रति लीटर पानी / 2-2.5g per liter), safety precautions (मास्क व दस्ताने / PPE), and timing (सुबह या शाम / morning or dusk).
+3. Be warm, empathetic, and encouraging.`;
+
+    // 1. Generate Conversational Text
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: [
+        ...chatHistory.map((m: { role: string; content: string }) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }]
+        })),
+        {
+          role: 'user',
+          parts: [{ text: question }]
+        }
+      ],
+      config: {
+        systemInstruction,
+        temperature: 0.6,
+      }
+    });
+
+    const reply = response.text || defaultFallbackReply;
+
+    // 2. Generate Audio TTS for the reply
+    let audioBase64: string | null = null;
+    try {
+      const ttsResponse = await ai.models.generateContent({
+        model: "gemini-3.8-flash-lite-tts",
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: reply,
+                speechMetadata: {
+                  style: isHindi
+                    ? "Respectful, warm Indian agricultural voice, speaking clear Hindi"
+                    : "Clear, helpful agricultural advisor",
+                },
+              },
+            ],
+          },
+        ],
+        config: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: "Kore" },
+            },
+          },
+        },
+      });
+
+      audioBase64 = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
+    } catch (ttsErr) {
+      console.warn("TTS generation inside voice assistant failed:", ttsErr);
+    }
+
+    return res.json({
+      reply,
+      audioBase64,
+      mimeType: "audio/wav",
+      language
+    });
+  } catch (error: any) {
+    console.error("Voice assistant error:", error);
+    return res.json({
+      reply: req.body?.language === 'hi'
+        ? "फसल सुरक्षा के लिए 2-2.5 ग्राम फफूंदनाशक प्रति लीटर पानी में मिलाकर सुबह या शाम छिड़कें। पत्तों को सूखा रखें।"
+        : "Apply recommended fungicide at 2-2.5 grams per liter of water during early morning or late dusk. Keep foliage dry.",
+      audioBase64: null,
+      language: req.body?.language || 'hi'
+    });
+  }
+});
+
+// POST /api/transcribe-audio - Transcribe user spoken audio recorded from microphone
+app.post('/api/transcribe-audio', async (req: Request, res: Response) => {
+  try {
+    const { audioBase64, mimeType = 'audio/webm' } = req.body;
+
+    if (!audioBase64) {
+      return res.status(400).json({ error: 'audioBase64 is required' });
+    }
+
+    if (!ai || !process.env.GEMINI_API_KEY) {
+      return res.status(503).json({ error: 'Gemini API is not configured on the server' });
+    }
+
+    const cleanBase64 = audioBase64.replace(/^data:audio\/\w+;base64,/, '');
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.5-transcribe',
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: mimeType || 'audio/webm',
+              data: cleanBase64,
+            },
+          },
+          { text: "Transcribe the spoken words verbatim. The audio might be in Hindi, Punjabi, or English. Return only the transcribed text with no extra commentary." }
+        ]
+      }
+    });
+
+    return res.json({
+      text: response.text?.trim() || ''
+    });
+  } catch (error: any) {
+    console.error("Transcription error:", error);
+    return res.status(500).json({ error: 'Failed to transcribe audio' });
+  }
+});
+
 // GET /api/model-specs - Model metadata matching Chandigarh University project specifications
 app.get('/api/model-specs', (req: Request, res: Response) => {
   res.json({
@@ -464,7 +691,10 @@ async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const { createServer } = await import('vite');
     const vite = await createServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR !== 'true',
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -475,8 +705,16 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`AgroVision AI Server running on http://0.0.0.0:${PORT}`);
+  });
+
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is in use.`);
+    } else {
+      console.error('Server listen error:', err);
+    }
   });
 }
 
